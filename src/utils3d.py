@@ -162,6 +162,30 @@ def get_edges(VPos, ITris):
     L = sparse.coo_matrix((V, (I, J)), shape=(N, N)).tocsr()
     return L.nonzero()
 
+def get_vertex_neighbors(ITris):
+    """
+    Return a dictionary of vertex neighbors from a specification of
+    the triangles in a mesh
+
+    Parameters
+    ----------
+    ITris: ndarray(T, 3, dtype=int)
+        Triangle indices
+    
+    Returns
+    -------
+    dictionary: int => set of int
+        Neighbors of all vertices
+    """
+    neighbs = {}
+    for tri in ITris:
+        for idx in range(3):
+            i, j, k = tri[idx], tri[(idx+1)%3], tri[(idx+2)%3]
+            if not i in neighbs:
+                neighbs[i] = set([])
+            neighbs[i].add(j)
+            neighbs[i].add(k)
+    return neighbs
 
 def get_vertex_normals(VPos, ITris):
     """
@@ -198,7 +222,6 @@ def get_vertex_normals(VPos, ITris):
     P2 = VPos[ITris[:, 2], :]
 
     #Compute normals
-    NTris = ITris.shape[0]
     FNormals = FNormals/FAreas[:, None]
     FAreas = 0.5*FAreas
     FNormals = FNormals
@@ -245,3 +268,97 @@ def get_greedy_perm(X, idxs_start=[], n_perm=None):
         ds = np.minimum(ds, dpoint2all(idx))
     lam = np.max(ds)
     return idx_perm, lam
+
+
+
+"""#####################################
+        Labeling Utilities
+#####################################"""
+
+def label_components(N, ITris, cluster_cutoff=0):
+    """
+    Label connected components of a mesh
+    Parameters
+    ----------
+    N: int
+        Number of vertices
+    ITris: ndarray(T, 3, dtype=int)
+        Triangle indices
+    cluster_cutoff: int
+        The minimum cluster size to consider
+
+    Returns
+    -------
+    labels: ndarray(N, dtype=int)
+        Connected component labels.  -1 if it was not part of 
+        a connected component of cardinality >= cluster_cutoff
+    """
+    labels = -1*np.ones(N, dtype=int)
+    neighbs = get_vertex_neighbors(ITris)
+
+    ## Step 3: Run DFS from each node to find clusters
+    visited = np.zeros(N)
+    touched = np.zeros(N)
+    label_idx = 0
+    ## Loop through all vertices
+    for i in range(N):
+        if visited[i] == 0:
+            ## We've found the beginning of a new cluster
+            ## Start a depth-first search and add everything that is visited
+            ## in the DFS to a tooth
+            cluster = []
+            stack = [i]
+            while len(stack) > 0: # O(V) iterations
+                i2 = stack.pop()
+                cluster.append(i2)
+                visited[i2] = 1
+                for i3 in neighbs[i2]: # O(E) iterations
+                    if touched[i3] == 0:
+                        touched[i3] = 1
+                        stack.append(i3)
+            if len(cluster) > cluster_cutoff:
+                cluster = np.array(cluster, dtype=int)
+                labels[cluster] = label_idx
+                label_idx += 1
+    return labels
+
+def get_label_counts(labels):
+    """
+    Parameters
+    ----------
+    labels: ndarray(N, dtype=int)
+        Connected component labels.  -1 if it was not part of 
+        a connected component of cardinality >= cluster_cutoff
+
+    Returns
+    -------
+        ndarray(num_labels)
+            Index i is the counts with label i
+    """
+    from scipy.sparse import coo_matrix
+    labels = labels[labels >= 0]
+    N = labels.size
+    n_labels = len(np.unique(labels))
+    counts = coo_matrix((np.ones(N), (np.zeros(N), labels)), shape=(1, n_labels))
+    return np.array(counts.toarray().flatten(), dtype=int)
+
+def crop_binary_volume(V):
+    """
+    Crop a binary volume to the axis-aligned bounding box containing
+    all of the 1's
+
+    Parameters
+    ----------
+    V: ndarray(M, N, L)
+        A volume of 1s and 0s
+    
+    Returns:
+    ndarray(<=M, <=N, <=L)
+    """
+    rg = []
+    for i in range(3):
+        Vi = V.swapaxes(0, i)
+        Vi = np.reshape(Vi, (Vi.shape[0], Vi.shape[1]*Vi.shape[2]))
+        idx = np.where(np.sum(Vi, axis=1) > 0)
+        rg.append((np.min(idx), np.max(idx)))
+    return V[rg[0][0]:rg[0][1], rg[1][0]:rg[1][1], rg[2][0]:rg[2][1]]
