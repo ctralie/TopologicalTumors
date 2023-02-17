@@ -98,7 +98,6 @@ def sample_by_area(VPos, ITris, npoints, colPoints = False):
     for i in range(len(FSamples)):
         tidx[idx:idx+FSamples[i]] = i
         idx += FSamples[i]
-    N = np.zeros((npoints, 3)) #Allocate space for normals
     idx = 0
 
     #Vector used to determine if points need to be flipped across parallelogram
@@ -133,6 +132,39 @@ def sample_by_area(VPos, ITris, npoints, colPoints = False):
     if colPoints:
         return (Ps.T, Ns.T)
     return (Ps, Ns)
+
+def get_indicator_submanifold(VPos, ITris, ind):
+    """
+    Return a triangle mesh that's a subset of the given mesh where
+    an indicator function is 1
+    
+    Parameters
+    ----------
+    VPos: ndarray(N, 3)
+        Vertex positions
+    ITris: ndarray(T, 3, dtype=int)
+        Triangle indices
+    ind: ndarray(N)
+        Indicator function on the vertices
+    
+    Parameters
+    ----------
+    VSub: ndarray(<=N, 3)
+        Vertices of the submanifold,
+    TSub: ndarray(<=T, 3)
+        Triangles of the submanifold, indexed according to the vertex order
+    """
+    N = VPos.shape[0]
+    idx = np.where(ind == 1)[0]
+    VSub = VPos[idx, :]
+    reindex = -1*np.ones(N, dtype=int)
+    reindex[idx] = np.arange(idx.size)
+    ITris = np.array(ITris, dtype=int)
+    tris_used = reindex[ITris]
+    tris_used = np.sum(tris_used > -1, axis=1) == 3
+    TSub = ITris[tris_used, :]
+    TSub = reindex[TSub]
+    return VSub, TSub
 
 def get_edges(VPos, ITris):
     """
@@ -275,7 +307,7 @@ def get_greedy_perm(X, idxs_start=[], n_perm=None):
         Labeling Utilities
 #####################################"""
 
-def label_components(N, ITris, cluster_cutoff=0):
+def label_mesh_components(N, ITris, cluster_cutoff=0):
     """
     Label connected components of a mesh
     Parameters
@@ -322,6 +354,60 @@ def label_components(N, ITris, cluster_cutoff=0):
                 label_idx += 1
     return labels
 
+
+def label_volume_components(B, cluster_cutoff=0):
+    """
+    Label connected components of a binary volume
+    Parameters
+    ----------
+    B: ndarray(M, N, L)
+        A volume of 1s and 0s
+    cluster_cutoff: int
+        The minimum cluster size to consider
+
+    Returns
+    -------
+    labels: ndarray(M, N, L, dtype=int)
+        Connected component labels.  -1 if it was not part of 
+        a connected component of cardinality >= cluster_cutoff
+    """
+    labels = -1*np.ones(B.shape, dtype=int)
+    (M, N, L) = labels.shape
+
+    ## Step 1: Run DFS from each node to find clusters
+    visited = np.zeros(B.shape)
+    touched = np.zeros(B.shape)
+    label_idx = 0
+    ## Loop through all vertices
+    d_neighbs = [[-1, 0, 0], [1, 0, 0], [0, -1, 0], [0, 1, 0], [0, 0, 1], [0, 0, -1]]
+    d_neighbs = np.array(d_neighbs, dtype=int)
+    for i in range(M):
+        for j in range(N):
+            for k in range(L):
+                if B[i, j, k] == 1 and visited[i, j, k] == 0:
+                    ## We've found the beginning of a new cluster
+                    ## Start a depth-first search and add everything that is visited
+                    ## in the DFS to a tooth
+                    cluster = []
+                    stack = [np.array([i, j, k], dtype=int)]
+                    while len(stack) > 0: # O(V) iterations
+                        ijk2 = stack.pop()
+                        [i2, j2, k2] = ijk2
+                        cluster.append(ijk2)
+                        visited[i2, j2, k2] = 1
+                        for dn in d_neighbs: # O(E) iterations
+                            ijk3 = ijk2 + dn
+                            [i3, j3, k3] = ijk3
+                            if i3 >= 0 and i3 < M and j3 >= 0 and j3 < N and k3 >= 0 and k3 < L:
+                                if B[i3, j3, k3] == 1 and touched[i3, j3, k3] == 0:
+                                    touched[i3, j3, k3] = 1
+                                    stack.append(ijk3)
+                    if len(cluster) > cluster_cutoff:
+                        cluster = np.array(cluster, dtype=int)
+                        labels[cluster[:, 0], cluster[:, 1], cluster[:, 2]] = label_idx
+                        label_idx += 1
+    return labels
+
 def get_label_counts(labels):
     """
     Parameters
@@ -342,14 +428,14 @@ def get_label_counts(labels):
     counts = coo_matrix((np.ones(N), (np.zeros(N), labels)), shape=(1, n_labels))
     return np.array(counts.toarray().flatten(), dtype=int)
 
-def crop_binary_volume(V):
+def crop_binary_volume(B):
     """
     Crop a binary volume to the axis-aligned bounding box containing
     all of the 1's
 
     Parameters
     ----------
-    V: ndarray(M, N, L)
+    B: ndarray(M, N, L)
         A volume of 1s and 0s
     
     Returns:
@@ -357,8 +443,20 @@ def crop_binary_volume(V):
     """
     rg = []
     for i in range(3):
-        Vi = V.swapaxes(0, i)
-        Vi = np.reshape(Vi, (Vi.shape[0], Vi.shape[1]*Vi.shape[2]))
-        idx = np.where(np.sum(Vi, axis=1) > 0)
+        Bi = B.swapaxes(0, i)
+        Bi = np.reshape(Bi, (Bi.shape[0], Bi.shape[1]*Bi.shape[2]))
+        idx = np.where(np.sum(Bi, axis=1) > 0)
         rg.append((np.min(idx), np.max(idx)))
-    return V[rg[0][0]:rg[0][1], rg[1][0]:rg[1][1], rg[2][0]:rg[2][1]]
+    return B[rg[0][0]:rg[0][1], rg[1][0]:rg[1][1], rg[2][0]:rg[2][1]]
+
+def binary_volume_2coords(B):
+    """
+    Extract a point cloud representation of the voxels
+    that are occupied in a binary volume
+    
+    Parameters
+    ----------
+    V: ndarray(M, N, L)
+        A volume of 1s and 0s
+    """
+    return np.array(np.where(B==1), dtype=float).T
