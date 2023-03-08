@@ -288,3 +288,28 @@ def get_spin_image(X, n_angles, extent, dim):
         hist += np.histogram2d(Y[:, 0], Y[:, 1], dim, [[-extent, extent], [-extent, extent]])[0]
     hist = hist/np.sum(hist) #Normalize before returning
     return hist
+
+def get_shape_dna(VPos, ITris, n_eig):
+    """
+    Compute the shape DNA (aka laplacian eigenvectors) of a mesh
+    
+    Parameters
+    ----------
+    VPos: ndarray(N, 3)
+        Vertex positions
+    ITris: ndarray(T, 3, dtype=int)
+        Triangle indices
+    n_eig: int
+        Number of eigenvectors to use
+    
+    Returns
+    -------
+    ndarray(n_eig)
+        Eigenvalues in sorted order
+        
+    """
+    import robust_laplacian # https://github.com/nmwsharp/robust-laplacians-py/
+    import scipy.sparse.linalg as sla
+    L, M = robust_laplacian.mesh_laplacian(VPos, ITris)
+    lambdas, _ = sla.eigsh(L, n_eig, M, sigma=1)
+    return lambdas
