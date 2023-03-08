@@ -445,9 +445,13 @@ def crop_binary_volume(B):
     for i in range(3):
         Bi = B.swapaxes(0, i)
         Bi = np.reshape(Bi, (Bi.shape[0], Bi.shape[1]*Bi.shape[2]))
-        idx = np.where(np.sum(Bi, axis=1) > 0)
-        rg.append((np.min(idx), np.max(idx)))
-    return B[rg[0][0]:rg[0][1], rg[1][0]:rg[1][1], rg[2][0]:rg[2][1]]
+        idx = np.where(np.sum(Bi, axis=1) > 0)[0]
+        if idx.size > 0:
+            rg.append((np.min(idx), np.max(idx)))
+    ret = np.array([])
+    if len(rg) > 0:
+        ret = B[rg[0][0]:rg[0][1], rg[1][0]:rg[1][1], rg[2][0]:rg[2][1]]
+    return ret
 
 def binary_volume_2coords(B):
     """

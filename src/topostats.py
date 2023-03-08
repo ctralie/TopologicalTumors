@@ -69,3 +69,53 @@ def remove_infinite(PDs):
         Persistence diagrams with infinite pairs removed
     """
     return [I[np.isfinite(I[:, 1]), :] for I in PDs]
+
+def get_persim_stack(PDs, pimgr):
+    """
+    Compute a stack of persistence images on a set of
+    persistence diagrams
+
+    Parameters
+    ----------
+    PDs: list of M ndarray(Ni, 2)
+        Persistence diagrams
+    pimgr: scipy.PersistenceImager
+        Persistance imager object that creates dxd images
+        from persistence diagrams
+    
+    Returns
+    ndarray(M*3, d, d)
+        Stack of filtered persistence images
+    """
+    stack = []
+    PDs = remove_infinite(PDs)
+    for PD in PDs:
+        I = np.array(pimgr.transform(PD))
+        stack.append(I)
+    return np.array(stack)
+
+def get_kernel_persim_stack(B, kernels, pimgr):
+    """
+    Compute the sublevelset filtrations of binary 3D images
+    after they have been convolved with a set of kernels, and
+    compute persistence images for each diagram for each kernel
+
+    Parameters
+    ----------
+    B: ndarray(N, L, P)
+        Binary volumetric function
+    kernels: list of M ndarray(k, k)
+        Kernels to apply before sublevelset filtrations
+    pimgr: scipy.PersistenceImager
+        Persistance imager object that creates dxd images
+        from persistence diagrams
+    
+    Returns
+    ndarray(M*3, d, d)
+        Stack of filtered persistence images
+
+    """
+    PDs = []
+    for kernel in kernels:
+        PDs += get_binary_kernel_cubical_filtration(B, kernel)
+    return get_persim_stack(PDs, pimgr)
