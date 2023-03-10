@@ -1,6 +1,6 @@
 import torch
 from torch.utils.data import Dataset
-from persim import plot_diagrams, PersistenceImager
+from persim import PersistenceImager
 import numpy as np
 import pickle
 import glob
@@ -12,7 +12,7 @@ class PImageTumorDataset(Dataset):
     """
     A dataset of layers of persistence images of tumors
     """
-    def __init__(self, data_dir, metadata_path, imgr, filtration_type, seed=0, is_training=True, perc=0.9):
+    def __init__(self, data_dir, metadata_path, imgr, filtration_type, seed=0, is_training=True, perc=0.9, layers=np.array([])):
         """
         Parameters
         ----------
@@ -30,12 +30,13 @@ class PImageTumorDataset(Dataset):
             Whether this is the training or test set
         perc: float
             Use this percentage of the dataset for training
+        layers: int
+            If > 0, take only these persistence diagrams
         """
         ## Step 1: Filter out everything except glioblastoma
         files = glob.glob("{}/*.pkl".format(data_dir))
         files = sorted(files)
         to_keep = []
-        to_ignore = []
         metadata = pd.read_csv(metadata_path)
         for f in files:
             if not "cache" in f:
@@ -57,6 +58,7 @@ class PImageTumorDataset(Dataset):
             self.files = files[N::]
         self.imgr = imgr
         self.filtration_type = filtration_type
+        self.layers = layers
 
     def __len__(self):
         return len(self.files)
@@ -107,6 +109,9 @@ class PImageTumorDataset(Dataset):
                     i += 1
             pickle.dump({"images":images, "OS":res["OS"]}, open(cache_path, "wb"))
         res = pickle.load(open(cache_path, "rb"))
+        images = res["images"]
+        if self.layers.size > 0:
+            images = images[:, self.layers, :, :]
         return res["images"], float(res["OS"] > 365) # Alive for at least one year
 
 if __name__ == '__main__':
