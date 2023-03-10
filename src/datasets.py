@@ -107,7 +107,7 @@ class PImageTumorDataset(Dataset):
                     i += 1
             pickle.dump({"images":images, "OS":res["OS"]}, open(cache_path, "wb"))
         res = pickle.load(open(cache_path, "rb"))
-        return res["images"], int(res["OS"] > 365) # Alive for at least one year
+        return res["images"], float(res["OS"] > 365) # Alive for at least one year
 
 if __name__ == '__main__':
     data_dir = "../preprocessed"
