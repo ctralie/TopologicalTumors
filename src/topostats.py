@@ -49,11 +49,15 @@ def get_binary_kernel_cubical_filtration(B, kernel):
     from scipy.signal import fftconvolve
     from utils3d import crop_binary_volume
     from gudhi.cubical_complex import CubicalComplex
-    B = crop_binary_volume(B) # Crop to region of interest for speed
-    V = fftconvolve(B, kernel, mode='full')
-    c = CubicalComplex(top_dimensional_cells=V)
-    pers = c.persistence()
-    return gudhi2sktda(pers)
+    ret = [np.array([]), np.array([]), np.array([])]
+    if B.size > 0:
+        B = crop_binary_volume(B) # Crop to region of interest for speed
+        if B.size > 0:
+            V = fftconvolve(B, kernel, mode='full')
+            c = CubicalComplex(top_dimensional_cells=V)
+            pers = c.persistence()
+            ret = gudhi2sktda(pers)
+    return ret
 
 def remove_infinite(PDs):
     """
@@ -68,7 +72,13 @@ def remove_infinite(PDs):
     list of ndarray(<=Ni, 2)
         Persistence diagrams with infinite pairs removed
     """
-    return [I[np.isfinite(I[:, 1]), :] for I in PDs]
+    ret = []
+    for I in PDs:
+        if I.size > 0:
+            ret.append(I[np.isfinite(I[:, 1]), :])
+        else:
+            ret.append(I)
+    return ret
 
 def get_persim_stack(PDs, pimgr):
     """

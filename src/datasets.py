@@ -38,12 +38,13 @@ class PImageTumorDataset(Dataset):
         to_ignore = []
         metadata = pd.read_csv(metadata_path)
         for f in files:
-            ID = f.split("/")[-1].split(".pkl")[0]
-            s1, s2 = ID.split("-0")
-            ID = "{}-{}".format(s1, s2)
-            row = metadata.loc[metadata['ID'] == ID]
-            if "Glioblastoma" in row["Final pathologic diagnosis (WHO 2021)"].to_numpy()[0]:
-                to_keep.append(f)
+            if not "cache" in f:
+                ID = f.split("/")[-1].split(".pkl")[0]
+                s1, s2 = ID.split("-0")
+                ID = "{}-{}".format(s1, s2)
+                row = metadata.loc[metadata['ID'] == ID]
+                if "Glioblastoma" in row["Final pathologic diagnosis (WHO 2021)"].to_numpy()[0]:
+                    to_keep.append(f)
         files = to_keep
         
         ## Step 2: Shuffle files to create dataset
@@ -99,7 +100,7 @@ class PImageTumorDataset(Dataset):
             images = torch.zeros((1, n_pds, img.shape[0], img.shape[1]))
             i = 0
             for region in ["Edema", "Main Tumor", "Necrotic"]:
-                print(".", end="")
+                print(".", end="", flush=True)
                 for PD in res["{}_{}_PDs".format(region, self.filtration_type)]:
                     image = imgr.transform(PD)
                     images[0, i, :, :] = torch.from_numpy(image)
@@ -107,3 +108,15 @@ class PImageTumorDataset(Dataset):
             pickle.dump({"images":images, "OS":res["OS"]}, open(cache_path, "wb"))
         res = pickle.load(open(cache_path, "rb"))
         return res["images"], int(res["OS"] > 365) # Alive for at least one year
+
+if __name__ == '__main__':
+    data_dir = "../preprocessed"
+    metadata_path = "../Data/UCSF-PDGM-metadata_v2.csv"
+    imgr = PersistenceImager(pixel_size=0.1, birth_range=(-1,1), pers_range=(0, 2), 
+                              kernel_params={'sigma':0.1}, weight_params={'n':1.5})
+    filtration_type = "cubical"
+
+    dataset = PImageTumorDataset(data_dir, metadata_path, imgr, filtration_type)
+    for i in range(len(dataset)):
+        images, alive = dataset[i]
+        print(i, end="", flush=True)
