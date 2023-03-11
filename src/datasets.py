@@ -7,6 +7,48 @@ import glob
 import os
 import pandas as pd
 
+def days_alive_fn(metadata, ID):
+    row = metadata.loc[metadata['ID'] == ID]
+    return row["OS"].to_numpy()[0]
+
+def alive_fn(metadata, ID, cutoff=365):
+    row = metadata.loc[metadata['ID'] == ID]
+    return row["OS"].to_numpy()[0] > cutoff
+
+def condense_dataset(data_dir, metadata_path, y_fn):
+    """
+    Parameters
+    ----------
+    data_dir: str
+        Path to directory containing pickle files with persistence diagrams
+    metadata_path: str
+        Path to metadata
+    y_fn: function (pandas metadata, string ID) => float
+        Function for determining the variable to regress to
+    
+    Returns
+    -------
+    X: ndarray(N, d)
+        Vectorized features
+    y: ndarray(N)
+        Regression targets
+    """
+    files = glob.glob("{}/*.pkl".format(data_dir))
+    files = sorted(files)
+    metadata = pd.read_csv(metadata_path)
+    X = []
+    y = []
+    for f in files:
+        ID = f.split("/")[-1].split(".pkl")[0]
+        s1, s2 = ID.split("-0")
+        ID = "{}-{}".format(s1, s2)
+        y.append(y_fn(metadata, ID))
+        res = pickle.load(open(f, "rb"))
+        X.append(res["x"])
+    X = np.array(X)
+    y = np.array(y)
+    return X, y
+
 
 class PImageTumorDataset(Dataset):
     """
@@ -93,7 +135,6 @@ class PImageTumorDataset(Dataset):
         cache_path = self.get_cache_path(idx)
         filename = self.files[idx]
         images = []
-        OS = 0
         if not os.path.exists(cache_path):
             res = pickle.load(open(filename, "rb"))
             imgr = self.imgr

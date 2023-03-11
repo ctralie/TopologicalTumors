@@ -59,6 +59,42 @@ def get_auroc(model, dataset):
     auroc = AUROC(task="binary")
     return auroc(pred, target).item()
 
+def get_roc_image_html(fp, tp, title="", figsize=(5, 5)):
+    """
+    Create HTML code with base64 binary to display an ROC curve
+    
+    Parameters
+    ----------
+    fp: torch array(N)
+        False positive cutoffs
+    tp: torch array(N)
+        True positive cutoffs
+    title: string
+        Title of plot
+    figsize: tuple(float, float)
+        Matplotlib figure size
+    
+    Returns
+    -------
+    string: HTML code with base64 binary blob of matplotlib image
+    """
+    import matplotlib.pyplot as plt
+    import base64
+    import io 
+    auroc = torch.sum((fp[1::]-fp[0:-1])*tp[1::]).item()
+    plt.figure(figsize=figsize)
+    plt.plot(fp, tp)
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("{} (AUROC {:.3f})".format(title, auroc))
+    # https://stackoverflow.com/questions/38061267/matplotlib-graphic-image-to-base64
+    sstream = io.BytesIO()
+    plt.savefig(sstream, format='png')
+    sstream.seek(0)
+    blob = base64.b64encode(sstream.read())
+    s = "<img src=\"data:image/png;base64,{}\">".format(blob.decode())
+    return s
+
 class PImgCNNBinary(nn.Module):
     def __init__(self, dataset, depth, first_channels, pen_dim=0, device="cuda"):
         """
