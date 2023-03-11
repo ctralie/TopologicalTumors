@@ -25,7 +25,8 @@ def get_shape_hist(X, n_shells, r_max, center=True):
     """
     if center:
         # Move to centroid
-        X = X - np.mean(X, axis=0, keepdims=True)
+        if X.size > 0:
+            X = X - np.mean(X, axis=0, keepdims=True)
     hist = np.zeros(n_shells)
     dists = np.sqrt(np.sum(X**2, axis=1))
     rs = np.linspace(0, r_max, n_shells+1)
@@ -61,7 +62,8 @@ def get_shape_shell_hist(X, n_shells, r_max, subdiv=1, center=True):
     ndarray(n_shells*n_sectors) Shape shell histogram
     """
     if center:
-        X = X - np.mean(X, axis=0, keepdims=True)
+        if X.size > 0:
+            X = X - np.mean(X, axis=0, keepdims=True)
     # First sample points on the sphere by doing a regular subdivision
     # of an icosahedron
     from pymeshlab import MeshSet
@@ -104,7 +106,8 @@ def get_shape_pca_hist(X, n_shells, r_max, center=True):
     """
     from sklearn.decomposition import PCA
     if center:
-        X = X - np.mean(X, axis=0, keepdims=True)
+        if X.size > 0:
+            X = X - np.mean(X, axis=0, keepdims=True)
     pca = PCA(n_components=3)
     #Create a 2D histogram, with 3 eigenvalues for each shell
     hist = np.zeros((n_shells, 3))
@@ -113,8 +116,9 @@ def get_shape_pca_hist(X, n_shells, r_max, center=True):
     for i in range(n_shells):
         XSub = X[(dists >= rs[i])*(dists < rs[i+1]), :]
         if XSub.size > 0:
-            pca.fit(XSub)
-            hist[i, :] = np.sqrt(pca.singular_values_)
+            if XSub.shape[0] >= 3:
+                pca.fit(XSub)
+                hist[i, :] = np.sqrt(pca.singular_values_)
     return hist.flatten()
 
 def get_d2_hist(X, d_max, n_bins, n_samples):
@@ -139,11 +143,14 @@ def get_d2_hist(X, d_max, n_bins, n_samples):
     -------
     ndarray(n_bins): D2 histogram
     """
+    ret = np.zeros(n_bins)
     N = X.shape[0]
-    X1 = X[np.random.random_integers(0, N-1, n_samples), :]
-    X2 = X[np.random.random_integers(0, N-1, n_samples), :]
-    d = np.sqrt(np.sum((X1-X2)**2, axis=1))
-    return np.histogram(d, bins=n_bins, range=(0, d_max))[0]
+    if N > 0:
+        X1 = X[np.random.random_integers(0, N-1, n_samples), :]
+        X2 = X[np.random.random_integers(0, N-1, n_samples), :]
+        d = np.sqrt(np.sum((X1-X2)**2, axis=1))
+        ret = np.histogram(d, bins=n_bins, range=(0, d_max))[0]
+    return ret
 
 def get_a3_hist(X, n_bins, n_samples):
     """
@@ -271,22 +278,21 @@ def get_spin_image(X, n_angles, extent, dim):
         The spin image
     """
     from sklearn.decomposition import PCA
-    import matplotlib.pyplot as plt
-    X = X - np.mean(X, axis=0, keepdims=True)
     hist = np.zeros((dim, dim))
-
-    ## Step 1: Align image to its principal axes
-    pca = PCA(n_components=3)
-    X = pca.fit_transform(X)
-    
-    ## Step 2: Keep the first axis fixed, then rotate the other two axes
-    for a in np.linspace(0, 2*np.pi, n_angles+1)[0:n_angles]:
-        [c, s] = [np.cos(a), np.sin(a)]
-        R = np.array([[c, s], [-s, c]])
-        Y = np.array(X)
-        Y[:, 1::] = Y[:, 1::].dot(R)
-        hist += np.histogram2d(Y[:, 0], Y[:, 1], dim, [[-extent, extent], [-extent, extent]])[0]
-    hist = hist/np.sum(hist) #Normalize before returning
+    if X.size > 0 and X.shape[0] >= 3:
+        ## Step 1: Mean-center and align image to its principal axes
+        X = X - np.mean(X, axis=0, keepdims=True)
+        pca = PCA(n_components=3)
+        X = pca.fit_transform(X)
+        
+        ## Step 2: Keep the first axis fixed, then rotate the other two axes
+        for a in np.linspace(0, 2*np.pi, n_angles+1)[0:n_angles]:
+            [c, s] = [np.cos(a), np.sin(a)]
+            R = np.array([[c, s], [-s, c]])
+            Y = np.array(X)
+            Y[:, 1::] = Y[:, 1::].dot(R)
+            hist += np.histogram2d(Y[:, 0], Y[:, 1], dim, [[-extent, extent], [-extent, extent]])[0]
+        hist = hist/np.sum(hist) #Normalize before returning
     return hist
 
 def get_shape_dna(VPos, ITris, n_eig):
