@@ -1,4 +1,63 @@
+import torch
 from torch import nn
+import numpy as np
+
+def get_sigmoid_accuracy(model, dataset):
+    """
+    Compute the accuracy of the output of a network 
+    to binary ground truth labels
+
+    Parameters
+    ----------
+    model: torch.nn.Module
+        The model to apply
+    dataset: torch.utils.data.Dataset
+        Dataset to which to apply the model
+    
+    Returns
+    -------
+    A number between 0 and 1 indicating the proportion of correct
+    binary classifications
+    """
+    num_correct = 0
+    for data in dataset:
+        inputs, labels = data
+        outputs = model(inputs)
+        outputs = np.sign(outputs.detach().numpy()).flatten()
+        outputs = 0.5*(outputs + 1)
+        num_correct += np.sum(labels == outputs)
+    return num_correct / len(dataset)
+
+def get_auroc(model, dataset):
+    """
+    Compute the AUROC of the output of a network 
+    to binary ground truth labels
+
+    Parameters
+    ----------
+    model: torch.nn.Module
+        The model to apply
+    dataset: torch.utils.data.Dataset
+        Dataset to which to apply the model
+    
+    Returns
+    -------
+    A number between 0 and 1 indicating the area 
+    under the ROC curve
+    """
+    from torchmetrics import AUROC
+    pred = []
+    target = []
+    for data in dataset:
+        inputs, labels = data
+        outputs = model(inputs)
+        outputs = outputs.detach().numpy().flatten()
+        pred.append(outputs[0])
+        target.append(labels)
+    pred = torch.from_numpy(np.array(pred))
+    target = torch.from_numpy(np.array(target, dtype=int))
+    auroc = AUROC(task="binary")
+    return auroc(pred, target).item()
 
 class PImgCNNBinary(nn.Module):
     def __init__(self, dataset, depth, first_channels, pen_dim=0, device="cuda"):
@@ -25,7 +84,7 @@ class PImgCNNBinary(nn.Module):
         
         ## Step 1: Create Convolutional Down Network
         images, _ = dataset[0] # Dummy to figure out shape
-        
+        print("images.shape", images.shape)
         layers = nn.ModuleList()
         lastchannels = images.shape[1]
         channels = first_channels

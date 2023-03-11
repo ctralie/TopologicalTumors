@@ -112,7 +112,7 @@ class PImageTumorDataset(Dataset):
         images = res["images"]
         if self.layers.size > 0:
             images = images[:, self.layers, :, :]
-        return res["images"], float(res["OS"] > 365) # Alive for at least one year
+        return images, float(res["OS"] > 365) # Alive for at least one year
 
 if __name__ == '__main__':
     data_dir = "../preprocessed"
