@@ -15,7 +15,7 @@ def alive_fn(metadata, ID, cutoff=365):
     row = metadata.loc[metadata['ID'] == ID]
     return row["OS"].to_numpy()[0] > cutoff
 
-def condense_dataset(data_dir, metadata_path, y_fn):
+def condense_dataset(data_dir, metadata_path, to_skip=["kernels"]):
     """
     Parameters
     ----------
@@ -23,8 +23,6 @@ def condense_dataset(data_dir, metadata_path, y_fn):
         Path to directory containing pickle files with persistence diagrams
     metadata_path: str
         Path to metadata
-    y_fn: function (pandas metadata, string ID) => float
-        Function for determining the variable to regress to
     
     Returns
     -------
@@ -32,23 +30,25 @@ def condense_dataset(data_dir, metadata_path, y_fn):
         Vectorized features
     y: ndarray(N)
         Regression targets
+    IDs: list of N strings
+        IDs of each entry
     """
     files = glob.glob("{}/*.pkl".format(data_dir))
     files = sorted(files)
     metadata = pd.read_csv(metadata_path)
     X = []
     y = []
+    IDs = []
     for f in files:
         ID = f.split("/")[-1].split(".pkl")[0]
-        s1, s2 = ID.split("-0")
-        ID = "{}-{}".format(s1, s2)
-        y.append(y_fn(metadata, ID))
-        res = pickle.load(open(f, "rb"))
-        X.append(res["x"])
+        if not ID in to_skip:
+            IDs.append(ID)
+            res = pickle.load(open(f, "rb"))
+            X.append(res["x"])
     X = np.array(X)
-    y = np.array(y)
-    return X, y
+    return X, IDs
 
+ 
 
 class PImageTumorDataset(Dataset):
     """
